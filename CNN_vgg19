@@ -1,0 +1,325 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Mar  8 11:42:14 2022
+
+@author: yuwei
+"""
+import os
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+from torchvision import datasets, transforms
+from torch.autograd import Variable
+import numpy as np
+from torchvision import models
+
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.utils import class_weight
+
+torch.manual_seed(1)    # reproducible
+
+# input image root
+data_train_dir = 'train/'
+data_val_dir   = 'val/'
+data_test_dir  = 'test/'
+
+# Hyper Parameters
+n_epochs = 300
+batch_size = 32
+class_names = ['F', 'N']
+learning_rate = 0.0001
+patience = 10
+class_weights=class_weight.compute_class_weight(class_weight = 'balanced',\
+                                                classes = np.unique(class_names),\
+                                                y = ['F']*len(os.listdir('C:/Users/yuwei/Desktop/work/python/Yolov5_DeepSort_Pytorch/yolov5/work_process_flow/4_coped_fall_or_sqate_ROI_0307/## perpare_ok_hand_more_suate_fall/train/fall_down/'))+\
+                                                    ['N']*len(os.listdir('C:/Users/yuwei/Desktop/work/python/Yolov5_DeepSort_Pytorch/yolov5/work_process_flow/4_coped_fall_or_sqate_ROI_0307/## perpare_ok_hand_more_suate_fall/train/squat')))
+class_weights=torch.tensor(class_weights,dtype=torch.float).cuda()
+num_classes = len(class_weights)
+
+train_transforms = transforms.Compose([transforms.Resize([224, 224]),
+                                       transforms.RandomHorizontalFlip(p = 0.9),
+                                       # transforms.ColorJitter(brightness=0.5, contrast=0.5, saturation=0.5, hue=0.5),
+                                       transforms.ToTensor()])
+
+#對測試集做變換
+val_test_transforms = transforms.Compose([transforms.Resize([224, 224]),
+                                     # transforms.RandomResizedCrop(224),
+                                     transforms.ToTensor()])
+
+dataset_tarin  = datasets.ImageFolder(data_train_dir, transform=train_transforms)
+train_dataloader = torch.utils.data.DataLoader(dataset_tarin, batch_size, shuffle=True)
+
+dataset_val  = datasets.ImageFolder(data_val_dir, transform=val_test_transforms)
+val_dataloader = torch.utils.data.DataLoader(dataset_val, batch_size, shuffle=False)
+
+dataset_test = datasets.ImageFolder(data_test_dir, transform=val_test_transforms)
+test_dataloader = torch.utils.data.DataLoader(dataset_test, 1, shuffle=False)
+
+# len(train_dataloader.dataset) # 輸出樣本數量
+#%%
+import torchvision.models as models
+import torch.nn as nn
+
+model_transfer = models.vgg19(pretrained=True)
+
+print(model_transfer)
+
+for i in model_transfer.features.named_parameters():
+    layer_no = ''.join(c for c in i[0] if c.isdigit())
+    if int(layer_no) <= 22:
+        i[1].requires_grad = False
+        
+for i in model_transfer.features.named_parameters():
+    print(i[0],i[1].requires_grad)
+    
+#%%
+avgpool = nn.AdaptiveAvgPool2d(output_size=(1,1))
+
+from collections import OrderedDict
+
+classifier = nn.Sequential(OrderedDict([
+                          ('0', nn.Linear(512, 128)),
+                          ('1', nn.Linear(128, 2)),
+                          ('2', nn.LogSoftmax(dim=1))
+                          ]))
+model_transfer.avgpool = avgpool
+model_transfer.classifier = classifier
+use_cuda = torch.cuda.is_available()
+
+if use_cuda:
+    model_transfer = model_transfer.cuda()
+print(model_transfer)
+
+#%%
+# Loss and optimizer
+criterion = torch.nn.CrossEntropyLoss(class_weights)
+optimizer = torch.optim.Adam(model_transfer.parameters(), lr=learning_rate)
+
+#%%
+# import EarlyStopping
+class EarlyStopping:
+    """Early stops the training if validation loss doesn't improve after a given patience."""
+    def __init__(self, patience=20, verbose=False, delta=0):
+        """
+        Args:
+            patience (int): How long to wait after last time validation loss improved.
+                            上次验证集损失值改善后等待几个epoch
+                            Default: 7
+            verbose (bool): If True, prints a message for each validation loss improvement.
+                            如果是True，为每个验证集损失值改善打印一条信息
+                            Default: False
+            delta (float): Minimum change in the monitored quantity to qualify as an improvement.
+                            监测数量的最小变化，以符合改进的要求
+                            Default: 0
+        """
+        self.patience = patience
+        self.verbose = verbose
+        self.counter = 0
+        self.best_score = None
+        self.early_stop = False
+        self.val_loss_min = np.Inf
+        self.delta = delta
+
+    def __call__(self, val_loss, model):
+
+        score = -val_loss
+
+        if self.best_score is None:
+            self.best_score = score
+            self.save_checkpoint(val_loss, model)
+        elif score < self.best_score + self.delta:
+            self.counter += 1
+            print(f'EarlyStopping counter: {self.counter} out of {self.patience}')
+            if self.counter >= self.patience:
+                self.early_stop = True
+        else:
+            self.best_score = score
+            self.save_checkpoint(val_loss, model)
+            self.counter = 0
+
+    def save_checkpoint(self, val_loss, model):
+        '''
+        Saves model when validation loss decrease.
+        验证损失减少时保存模型。
+        '''
+        if self.verbose:
+            print(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...')
+        # torch.save(model.state_dict(), 'checkpoint.pt')     # 这里会存储迄今最优模型的参数
+        torch.save(model, 'C:/Users/yuwei/Desktop/work/python/Yolov5_DeepSort_Pytorch/yolov5/work_process_flow/4_coped_fall_or_sqate_ROI_0307/vgg_finish_model_0412__.pkl')                 # 这里会存储迄今最优的模型
+        self.val_loss_min = val_loss
+
+#%%
+def train_model(train_loader, valid_loader, model, batch_size, patience, n_epochs):
+    
+    # to track the training loss as the model trains
+    train_losses = []
+    # to track the validation loss as the model trains
+    valid_losses = []
+    # to track the average training loss per epoch as the model trains
+    avg_train_losses = []
+    # to track the average validation loss per epoch as the model trains
+    avg_valid_losses = [] 
+    
+    # initialize the early_stopping object
+    early_stopping = EarlyStopping(patience, verbose=True)
+    
+    for epoch in range(1, n_epochs + 1):
+
+        ###################
+        # train the model #
+        ###################
+        model.train() # prep model for training
+        for batch, (data, target) in enumerate(train_loader, 1):
+            # clear the gradients of all optimized variables
+            optimizer.zero_grad()
+            # forward pass: compute predicted outputs by passing inputs to the model
+            data   = data.cuda()
+            target = target.cuda()
+            output = model(data)
+            # calculate the loss
+            loss = criterion(output, target)
+            # backward pass: compute gradient of the loss with respect to model parameters
+            loss.backward()
+            # perform a single optimization step (parameter update)
+            optimizer.step()
+            # record training loss
+            train_losses.append(loss.item())
+
+        ######################    
+        # validate the model #
+        ######################
+        model.eval() # prep model for evaluation
+        for data, target in valid_loader:
+            # forward pass: compute predicted outputs by passing inputs to the model
+            data   = data.cuda()
+            target = target.cuda()
+            output = model(data)
+            # calculate the loss
+            loss = criterion(output, target)
+            # record validation loss
+            valid_losses.append(loss.item())
+
+        # print training/validation statistics 
+        # calculate average loss over an epoch
+        train_loss = np.average(train_losses)
+        valid_loss = np.average(valid_losses)
+        avg_train_losses.append(train_loss)
+        avg_valid_losses.append(valid_loss)
+        
+        epoch_len = len(str(n_epochs))
+        
+        print_msg = (f'[{epoch:>{epoch_len}}/{n_epochs:>{epoch_len}}] ' +
+                     f'train_loss: {train_loss:.5f} ' +
+                     f'valid_loss: {valid_loss:.5f}')
+        
+        print(print_msg)
+        
+        # clear lists to track next epoch
+        train_losses = []
+        valid_losses = []
+        
+        # early_stopping needs the validation loss to check if it has decresed, 
+        # and if it has, it will make a checkpoint of the current model
+        early_stopping(valid_loss, model)
+        
+        if early_stopping.early_stop:
+            print("Early stopping")
+            break
+
+    return  model, avg_train_losses, avg_valid_losses
+
+#%%
+model, train_loss, valid_loss = train_model(train_dataloader, val_dataloader, model_transfer, batch_size, patience, n_epochs)
+
+#%%
+# visualize the loss as the network trained
+fig = plt.figure(figsize=(10,8))
+plt.plot(range(1,len(train_loss)+1),train_loss, label='Training Loss')
+plt.plot(range(1,len(valid_loss)+1),valid_loss,label='Validation Loss')
+
+# find position of lowest validation loss
+minposs = valid_loss.index(min(valid_loss))+1 
+plt.axvline(minposs, linestyle='--', color='r',label='Early Stopping Checkpoint')
+
+plt.xlabel('epochs')
+plt.ylabel('loss')
+plt.ylim(0, 0.2) # consistent scale
+plt.xlim(0, len(train_loss)+1) # consistent scale
+plt.grid(True)
+plt.legend()
+plt.tight_layout()
+plt.show()
+fig.savefig('./vgg_loss_plot.png', bbox_inches='tight')
+
+#%%
+# initialize lists to monitor test loss and accuracy
+# test_loss = 0.0
+class_correct = list(0. for i in range(len(test_dataloader.dataset)))
+class_total = list(0. for i in range(len(test_dataloader.dataset)))
+
+# model = torch.load('C:/Users/yuwei/Desktop/work/python/Yolov5_DeepSort_Pytorch/yolov5/work_process_flow/4_coped_fall_or_sqate_ROI_0307/ResNet101_add_new_data/finish_model_resnet.pkl').cuda()
+
+model.eval() # prep model for evaluation
+
+t= []
+for data, target in test_dataloader:
+    t.append(len(target.data))
+    if len(target.data) != 1:
+        break
+    # forward pass: compute predicted outputs by passing inputs to the model
+    data   = data.cuda()
+    target = target.cuda()
+    output = model(data)
+    # calculate the loss
+    # loss = criterion(output, target)
+    # update test loss 
+    # test_loss += loss.item()*data.size(0)
+    # convert output probabilities to predicted class
+    _, pred = torch.max(output, 1)
+    # compare predictions to true label
+    correct = np.squeeze(pred.eq(target.data.view_as(pred)))
+    # calculate test accuracy for each object class
+
+    label = target.data
+    class_correct[label] += correct.item()
+    class_total[label] += 1
+
+# calculate and print avg test loss
+test_loss = test_loss/len(test_dataloader.dataset)
+print('Test Loss: {:.6f}\n'.format(test_loss))
+
+for i in range(len(test_dataloader.dataset)):
+    if class_total[i] > 0:
+        print('Test Accuracy of %5s: %2d%% (%2d/%2d)' % (
+            str(i), 100 * class_correct[i] / class_total[i],
+            np.sum(class_correct[i]), np.sum(class_total[i])))
+
+print('\nTest Accuracy (Overall): %2d%% (%2d/%2d)' % (
+    100. * np.sum(class_correct) / np.sum(class_total),
+    np.sum(class_correct), np.sum(class_total)))
+
+#%%
+# obtain one batch of test images
+dataiter = iter(test_dataloader)
+images, labels = dataiter.next()
+images   = images.cuda()
+labels   = labels.cuda()
+
+# get sample outputs
+output = model(images)
+# convert output probabilities to predicted class
+_, preds = torch.max(output, 1)
+# prep images for display
+images = images.cpu().numpy()
+
+# # plot the images in the batch, along with predicted and true labels
+fig = plt.figure(figsize=(20, 5))
+for idx in np.arange(20):
+    ax = fig.add_subplot(2, 10, idx+1, xticks=[], yticks=[])
+    temp = images[idx]
+    im = temp.transpose(1,2,0)
+    ax.imshow(np.squeeze(im), cmap='gray')
+    ax.set_title("{} ({})".format(str(preds[idx].item()), str(labels[idx].item())), color=("green" if preds[idx]==labels[idx] else "red"))
+fig.savefig('./vgg_result_plot.png', bbox_inches='tight')
