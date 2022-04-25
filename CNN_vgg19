@@ -28,13 +28,13 @@ data_test_dir  = 'test/'
 # Hyper Parameters
 n_epochs = 300
 batch_size = 32
-class_names = ['F', 'N']
+class_names = ['fall_down', 'squat']
 learning_rate = 0.0001
 patience = 10
 class_weights=class_weight.compute_class_weight(class_weight = 'balanced',\
                                                 classes = np.unique(class_names),\
-                                                y = ['F']*len(os.listdir('C:/Users/yuwei/Desktop/work/python/Yolov5_DeepSort_Pytorch/yolov5/work_process_flow/4_coped_fall_or_sqate_ROI_0307/## perpare_ok_hand_more_suate_fall/train/fall_down/'))+\
-                                                    ['N']*len(os.listdir('C:/Users/yuwei/Desktop/work/python/Yolov5_DeepSort_Pytorch/yolov5/work_process_flow/4_coped_fall_or_sqate_ROI_0307/## perpare_ok_hand_more_suate_fall/train/squat')))
+                                                y = ['F']*len(os.listdir('/fall_down/'))+\
+                                                    ['N']*len(os.listdir('/squat')))
 class_weights=torch.tensor(class_weights,dtype=torch.float).cuda()
 num_classes = len(class_weights)
 
