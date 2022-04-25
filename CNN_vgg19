@@ -21,9 +21,9 @@ from sklearn.utils import class_weight
 torch.manual_seed(1)    # reproducible
 
 # input image root
-data_train_dir = 'train/'
-data_val_dir   = 'val/'
-data_test_dir  = 'test/'
+data_train_dir = 'cnn_data/## perpare_ok_hand_more_suate_fall/'
+data_val_dir   = 'cnn_data/## perpare_ok_hand_more_suate_fall/'
+data_test_dir  = 'cnn_data/## perpare_ok_hand_more_suate_fall/'
 
 # Hyper Parameters
 n_epochs = 300
@@ -254,8 +254,6 @@ plt.show()
 fig.savefig('./vgg_loss_plot.png', bbox_inches='tight')
 
 #%%
-# initialize lists to monitor test loss and accuracy
-# test_loss = 0.0
 class_correct = list(0. for i in range(len(test_dataloader.dataset)))
 class_total = list(0. for i in range(len(test_dataloader.dataset)))
 
@@ -272,11 +270,6 @@ for data, target in test_dataloader:
     data   = data.cuda()
     target = target.cuda()
     output = model(data)
-    # calculate the loss
-    # loss = criterion(output, target)
-    # update test loss 
-    # test_loss += loss.item()*data.size(0)
-    # convert output probabilities to predicted class
     _, pred = torch.max(output, 1)
     # compare predictions to true label
     correct = np.squeeze(pred.eq(target.data.view_as(pred)))
@@ -285,10 +278,6 @@ for data, target in test_dataloader:
     label = target.data
     class_correct[label] += correct.item()
     class_total[label] += 1
-
-# calculate and print avg test loss
-test_loss = test_loss/len(test_dataloader.dataset)
-print('Test Loss: {:.6f}\n'.format(test_loss))
 
 for i in range(len(test_dataloader.dataset)):
     if class_total[i] > 0:
