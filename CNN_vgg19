@@ -44,9 +44,9 @@ class_names = ['F', 'N']
 learning_rate = 0.0001
 patience = 10
 class_weights=class_weight.compute_class_weight(class_weight = 'balanced',\
-												classes = np.unique(class_names),\
-												y = ['F']*len(os.listdir('./data/cnn_data/## perpare_ok_hand_more_suate_fall/train/fall_down/'))+\
-													['N']*len(os.listdir('./data/cnn_data/## perpare_ok_hand_more_suate_fall/train/squat')))
+						classes = np.unique(class_names),\
+						y = ['F']*len(os.listdir('./data/cnn_data/## perpare_ok_hand_more_suate_fall/train/fall_down/'))+\
+						['N']*len(os.listdir('./data/cnn_data/## perpare_ok_hand_more_suate_fall/train/squat')))
 class_weights=torch.tensor(class_weights,dtype=torch.float).cuda()
 num_classes = len(class_weights)
 
