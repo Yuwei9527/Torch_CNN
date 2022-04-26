@@ -18,74 +18,77 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.utils import class_weight
 
+import torchvision.models as models
+import torch.nn as nn
+
+from collections import OrderedDict
+
 torch.manual_seed(1)    # reproducible
 
 # input image root
-data_train_dir = 'cnn_data/## perpare_ok_hand_more_suate_fall/'
-data_val_dir   = 'cnn_data/## perpare_ok_hand_more_suate_fall/'
-data_test_dir  = 'cnn_data/## perpare_ok_hand_more_suate_fall/'
+data_train_dir = './data/cnn_data/## perpare_ok_hand_more_suate_fall/train/'
+data_val_dir   = './data/cnn_data/## perpare_ok_hand_more_suate_fall/val/'
+data_test_dir  = './data/cnn_data/## perpare_ok_hand_more_suate_fall/test/'
+
+# =============================================================================
+# Q：為什麼要使用class_weights?
+# A：這是一種緩解資料不平衡的方法，因為兩類的影像數量差了近3倍，為了避免模型只會輸出類別較多的那類，雖然有可能指標很漂亮，但卻是無用的模型。
+#	 模型加入懲罰機制，當樣本數量越低則權重越高，意思是驅使模型用更多力氣去學習那一類，而權重不高的那類就不那麼在意。
+# =============================================================================
 
 # Hyper Parameters
+input_size = 224
 n_epochs = 300
 batch_size = 32
-class_names = ['fall_down', 'squat']
+class_names = ['F', 'N']
 learning_rate = 0.0001
 patience = 10
 class_weights=class_weight.compute_class_weight(class_weight = 'balanced',\
-                                                classes = np.unique(class_names),\
-                                                y = ['fall_down']*len(os.listdir(data_train_dir + '/fall_down/'))+\
-                                                    ['squat']*len(os.listdir(data_train_dir + '/squat')))
+												classes = np.unique(class_names),\
+												y = ['F']*len(os.listdir('./data/cnn_data/## perpare_ok_hand_more_suate_fall/train/fall_down/'))+\
+													['N']*len(os.listdir('./data/cnn_data/## perpare_ok_hand_more_suate_fall/train/squat')))
 class_weights=torch.tensor(class_weights,dtype=torch.float).cuda()
 num_classes = len(class_weights)
 
-train_transforms = transforms.Compose([transforms.Resize([224, 224]),
-                                       transforms.RandomHorizontalFlip(p = 0.9),
-                                       # transforms.ColorJitter(brightness=0.5, contrast=0.5, saturation=0.5, hue=0.5),
-                                       transforms.ToTensor()])
+train_transforms = transforms.Compose([transforms.Resize([input_size, input_size]),
+									   transforms.RandomHorizontalFlip(p = 0.9), # 經驗是影像擴增手法越多模型越容易overfiting
+									   transforms.ToTensor()])
 
 #對測試集做變換
-val_test_transforms = transforms.Compose([transforms.Resize([224, 224]),
-                                     # transforms.RandomResizedCrop(224),
-                                     transforms.ToTensor()])
+val_test_transforms = transforms.Compose([transforms.Resize([input_size, input_size]),
+										  transforms.ToTensor()])
 
 dataset_tarin  = datasets.ImageFolder(data_train_dir, transform=train_transforms)
-train_dataloader = torch.utils.data.DataLoader(dataset_tarin, batch_size, shuffle=True)
+train_dataloader = torch.utils.data.DataLoader(dataset_tarin, batch_size, shuffle=True) # 影像集建議打亂，避免模型死記
 
 dataset_val  = datasets.ImageFolder(data_val_dir, transform=val_test_transforms)
 val_dataloader = torch.utils.data.DataLoader(dataset_val, batch_size, shuffle=False)
 
 dataset_test = datasets.ImageFolder(data_test_dir, transform=val_test_transforms)
-test_dataloader = torch.utils.data.DataLoader(dataset_test, 1, shuffle=False)
+test_dataloader = torch.utils.data.DataLoader(dataset_test, 1, shuffle=False) # 測試集一定不打亂 # 指定測試資料的批大小為1
 
-# len(train_dataloader.dataset) # 輸出樣本數量
 #%%
-import torchvision.models as models
-import torch.nn as nn
-
-model_transfer = models.vgg19(pretrained=True)
+model_transfer = models.vgg19(pretrained=True) # 使用imageNet預訓練權重進行模型培訓
 
 print(model_transfer)
 
 for i in model_transfer.features.named_parameters():
     layer_no = ''.join(c for c in i[0] if c.isdigit())
-    if int(layer_no) <= 22:
-        i[1].requires_grad = False
+    if int(layer_no) <= 22: # 凍結的層數
+        i[1].requires_grad = False # False凍結, True解凍
         
 for i in model_transfer.features.named_parameters():
     print(i[0],i[1].requires_grad)
-    
 #%%
 avgpool = nn.AdaptiveAvgPool2d(output_size=(1,1))
 
-from collections import OrderedDict
-
 classifier = nn.Sequential(OrderedDict([
                           ('0', nn.Linear(512, 128)),
-                          ('1', nn.Linear(128, 2)),
-                          ('2', nn.LogSoftmax(dim=1))
-                          ]))
-model_transfer.avgpool = avgpool
-model_transfer.classifier = classifier
+                          ('1', nn.Linear(128, 2)), # 使用兩個權連接層將資料維度收斂成2類(參考網站的經驗)
+                          ('2', nn.LogSoftmax(dim=1)) # 再透過Softmax將資料壓縮成0~1之間
+                          ])) 
+model_transfer.avgpool = avgpool # 接一個平均池化在VGG19後面
+model_transfer.classifier = classifier # 在平均池化後面接權連接層
 use_cuda = torch.cuda.is_available()
 
 if use_cuda:
@@ -94,26 +97,14 @@ print(model_transfer)
 
 #%%
 # Loss and optimizer
-criterion = torch.nn.CrossEntropyLoss(class_weights)
-optimizer = torch.optim.Adam(model_transfer.parameters(), lr=learning_rate)
+criterion = torch.nn.CrossEntropyLoss(class_weights) # 設定損失函數
+optimizer = torch.optim.Adam(model_transfer.parameters(), lr=learning_rate)# 設定超參數
 
 #%%
 # import EarlyStopping
 class EarlyStopping:
     """Early stops the training if validation loss doesn't improve after a given patience."""
     def __init__(self, patience=20, verbose=False, delta=0):
-        """
-        Args:
-            patience (int): How long to wait after last time validation loss improved.
-                            上次验证集损失值改善后等待几个epoch
-                            Default: 7
-            verbose (bool): If True, prints a message for each validation loss improvement.
-                            如果是True，为每个验证集损失值改善打印一条信息
-                            Default: False
-            delta (float): Minimum change in the monitored quantity to qualify as an improvement.
-                            监测数量的最小变化，以符合改进的要求
-                            Default: 0
-        """
         self.patience = patience
         self.verbose = verbose
         self.counter = 0
@@ -131,7 +122,7 @@ class EarlyStopping:
             self.save_checkpoint(val_loss, model)
         elif score < self.best_score + self.delta:
             self.counter += 1
-            print(f'EarlyStopping counter: {self.counter} out of {self.patience}')
+            print(f'EarlyStopping counter: {self.counter} out of {self.patience}') # 輸出當下已經沒有改善的次數
             if self.counter >= self.patience:
                 self.early_stop = True
         else:
@@ -145,9 +136,8 @@ class EarlyStopping:
         验证损失减少时保存模型。
         '''
         if self.verbose:
-            print(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...')
-        # torch.save(model.state_dict(), 'checkpoint.pt')     # 这里会存储迄今最优模型的参数
-        torch.save(model, 'C:/Users/yuwei/Desktop/work/python/Yolov5_DeepSort_Pytorch/yolov5/work_process_flow/4_coped_fall_or_sqate_ROI_0307/vgg_finish_model_0412__.pkl')                 # 这里会存储迄今最优的模型
+            print(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...') # 當模型驗證損失有下降就儲存該組權重
+        torch.save(model, './Module4_Fall_Down_Detection/cnn_weights/vgg_finish_model.pkl') # 保存最優模型(附檔名為pkl)
         self.val_loss_min = val_loss
 
 #%%
@@ -251,25 +241,23 @@ plt.grid(True)
 plt.legend()
 plt.tight_layout()
 plt.show()
-fig.savefig('./vgg_loss_plot.png', bbox_inches='tight')
+fig.savefig('./Module4_Fall_Down_Detection/cnn_training_plot/vgg_loss_plot.png', bbox_inches='tight')
 
 #%%
+# initialize lists to monitor test loss and accuracy
 class_correct = list(0. for i in range(len(test_dataloader.dataset)))
 class_total = list(0. for i in range(len(test_dataloader.dataset)))
 
-# model = torch.load('C:/Users/yuwei/Desktop/work/python/Yolov5_DeepSort_Pytorch/yolov5/work_process_flow/4_coped_fall_or_sqate_ROI_0307/ResNet101_add_new_data/finish_model_resnet.pkl').cuda()
-
 model.eval() # prep model for evaluation
 
-t= []
 for data, target in test_dataloader:
-    t.append(len(target.data))
     if len(target.data) != 1:
         break
     # forward pass: compute predicted outputs by passing inputs to the model
     data   = data.cuda()
     target = target.cuda()
     output = model(data)
+    # convert output probabilities to predicted class
     _, pred = torch.max(output, 1)
     # compare predictions to true label
     correct = np.squeeze(pred.eq(target.data.view_as(pred)))
@@ -279,6 +267,9 @@ for data, target in test_dataloader:
     class_correct[label] += correct.item()
     class_total[label] += 1
 
+# =============================================================================
+# 計算正確率
+# =============================================================================
 for i in range(len(test_dataloader.dataset)):
     if class_total[i] > 0:
         print('Test Accuracy of %5s: %2d%% (%2d/%2d)' % (
@@ -303,12 +294,13 @@ _, preds = torch.max(output, 1)
 # prep images for display
 images = images.cpu().numpy()
 
-# # plot the images in the batch, along with predicted and true labels
+# plot the images in the batch, along with predicted and true labels
 fig = plt.figure(figsize=(20, 5))
 for idx in np.arange(20):
     ax = fig.add_subplot(2, 10, idx+1, xticks=[], yticks=[])
     temp = images[idx]
     im = temp.transpose(1,2,0)
     ax.imshow(np.squeeze(im), cmap='gray')
-    ax.set_title("{} ({})".format(str(preds[idx].item()), str(labels[idx].item())), color=("green" if preds[idx]==labels[idx] else "red"))
-fig.savefig('./vgg_result_plot.png', bbox_inches='tight')
+    ax.set_title("{} ({})".format(str(preds[idx].item()), str(labels[idx].item())),
+                  color=("green" if preds[idx]==labels[idx] else "red"))
+fig.savefig('./Module4_Fall_Down_Detection/cnn_training_plot/vgg_result_plot.png', bbox_inches='tight')
