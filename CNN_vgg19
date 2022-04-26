@@ -33,7 +33,7 @@ data_test_dir  = './data/cnn_data/## perpare_ok_hand_more_suate_fall/test/'
 # =============================================================================
 # Q：為什麼要使用class_weights?
 # A：這是一種緩解資料不平衡的方法，因為兩類的影像數量差了近3倍，為了避免模型只會輸出類別較多的那類，雖然有可能指標很漂亮，但卻是無用的模型。
-#	 模型加入懲罰機制，當樣本數量越低則權重越高，意思是驅使模型用更多力氣去學習那一類，而權重不高的那類就不那麼在意。
+#    模型加入懲罰機制，當樣本數量越低則權重越高，意思是驅使模型用更多力氣去學習那一類，而權重不高的那類就不那麼在意。
 # =============================================================================
 
 # Hyper Parameters
@@ -44,19 +44,19 @@ class_names = ['F', 'N']
 learning_rate = 0.0001
 patience = 10
 class_weights=class_weight.compute_class_weight(class_weight = 'balanced',\
-						classes = np.unique(class_names),\
-						y = ['F']*len(os.listdir('./data/cnn_data/## perpare_ok_hand_more_suate_fall/train/fall_down/'))+\
-						['N']*len(os.listdir('./data/cnn_data/## perpare_ok_hand_more_suate_fall/train/squat')))
+                                                classes = np.unique(class_names),\
+                                                y = ['F']*len(os.listdir('./data/cnn_data/## perpare_ok_hand_more_suate_fall/train/fall_down/'))+\
+                                                    ['N']*len(os.listdir('./data/cnn_data/## perpare_ok_hand_more_suate_fall/train/squat')))
 class_weights=torch.tensor(class_weights,dtype=torch.float).cuda()
 num_classes = len(class_weights)
 
 train_transforms = transforms.Compose([transforms.Resize([input_size, input_size]),
-									   transforms.RandomHorizontalFlip(p = 0.9), # 經驗是影像擴增手法越多模型越容易overfiting
-									   transforms.ToTensor()])
+                                       transforms.RandomHorizontalFlip(p = 0.9), # 經驗是影像擴增手法越多模型越容易overfiting
+                                       transforms.ToTensor()])
 
 #對測試集做變換
 val_test_transforms = transforms.Compose([transforms.Resize([input_size, input_size]),
-										  transforms.ToTensor()])
+                                          transforms.ToTensor()])
 
 dataset_tarin  = datasets.ImageFolder(data_train_dir, transform=train_transforms)
 train_dataloader = torch.utils.data.DataLoader(dataset_tarin, batch_size, shuffle=True) # 影像集建議打亂，避免模型死記
