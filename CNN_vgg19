@@ -281,28 +281,3 @@ for i in range(len(test_dataloader.dataset)):
 print('\nTest Accuracy (Overall): %2d%% (%2d/%2d)' % (
     100. * np.sum(class_correct) / np.sum(class_total),
     np.sum(class_correct), np.sum(class_total)))
-
-#%%
-# obtain one batch of test images
-dataiter = iter(test_dataloader)
-images, labels = dataiter.next()
-images   = images.cuda()
-labels   = labels.cuda()
-
-# get sample outputs
-output = model(images)
-# convert output probabilities to predicted class
-_, preds = torch.max(output, 1)
-# prep images for display
-images = images.cpu().numpy()
-
-# plot the images in the batch, along with predicted and true labels
-fig = plt.figure(figsize=(20, 5))
-for idx in np.arange(20):
-    ax = fig.add_subplot(2, 10, idx+1, xticks=[], yticks=[])
-    temp = images[idx]
-    im = temp.transpose(1,2,0)
-    ax.imshow(np.squeeze(im), cmap='gray')
-    ax.set_title("{} ({})".format(str(preds[idx].item()), str(labels[idx].item())),
-                  color=("green" if preds[idx]==labels[idx] else "red"))
-fig.savefig(save_dir_plot + '/vgg_result_plot.png', bbox_inches='tight')
