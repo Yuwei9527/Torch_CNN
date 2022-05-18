@@ -6,3 +6,4 @@
 ![image](https://github.com/Yuwei9527/Torch_CNN/blob/main/vgg_network%20structure.png)
 
 # 訓練過程的損失曲線圖
+![iamge](https://github.com/Yuwei9527/Torch_CNN/blob/main/vgg_loss_plot.png)
