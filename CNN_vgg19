@@ -25,10 +25,12 @@ from collections import OrderedDict
 
 torch.manual_seed(1)    # reproducible
 
-# input image root
-data_train_dir = './data/cnn_data/## perpare_ok_hand_more_suate_fall/train/'
-data_val_dir   = './data/cnn_data/## perpare_ok_hand_more_suate_fall/val/'
-data_test_dir  = './data/cnn_data/## perpare_ok_hand_more_suate_fall/test/'
+# input image dir
+data_dir = '../datasets/cnn_data/## perpare_ok_hand_more_suate_fall/'
+
+# output weights dir
+save_dir_weights = './cnn_weights/vgg_finish_model.pkl'
+save_dir_plot = './cnn_training_plot/'
 
 # =============================================================================
 # Q：為什麼要使用class_weights?
@@ -45,8 +47,8 @@ learning_rate = 0.0001
 patience = 10
 class_weights=class_weight.compute_class_weight(class_weight = 'balanced',\
                                                 classes = np.unique(class_names),\
-                                                y = ['F']*len(os.listdir('./data/cnn_data/## perpare_ok_hand_more_suate_fall/train/fall_down/'))+\
-                                                    ['N']*len(os.listdir('./data/cnn_data/## perpare_ok_hand_more_suate_fall/train/squat')))
+                                                y = ['F']*len(os.listdir(data_dir + '/train/fall_down'))+\
+                                                    ['N']*len(os.listdir(data_dir +'/train/squat')))
 class_weights=torch.tensor(class_weights,dtype=torch.float).cuda()
 num_classes = len(class_weights)
 
@@ -58,27 +60,27 @@ train_transforms = transforms.Compose([transforms.Resize([input_size, input_size
 val_test_transforms = transforms.Compose([transforms.Resize([input_size, input_size]),
                                           transforms.ToTensor()])
 
-dataset_tarin  = datasets.ImageFolder(data_train_dir, transform=train_transforms)
+dataset_tarin  = datasets.ImageFolder(data_dir + 'train', transform=train_transforms)
 train_dataloader = torch.utils.data.DataLoader(dataset_tarin, batch_size, shuffle=True) # 影像集建議打亂，避免模型死記
 
-dataset_val  = datasets.ImageFolder(data_val_dir, transform=val_test_transforms)
+dataset_val  = datasets.ImageFolder(data_dir + 'val', transform=val_test_transforms)
 val_dataloader = torch.utils.data.DataLoader(dataset_val, batch_size, shuffle=False)
 
-dataset_test = datasets.ImageFolder(data_test_dir, transform=val_test_transforms)
+dataset_test = datasets.ImageFolder(data_dir + 'test', transform=val_test_transforms)
 test_dataloader = torch.utils.data.DataLoader(dataset_test, 1, shuffle=False) # 測試集一定不打亂 # 指定測試資料的批大小為1
 
 #%%
 model_transfer = models.vgg19(pretrained=True) # 使用imageNet預訓練權重進行模型培訓
 
-print(model_transfer)
+# print(model_transfer)
 
 for i in model_transfer.features.named_parameters():
     layer_no = ''.join(c for c in i[0] if c.isdigit())
     if int(layer_no) <= 22: # 凍結的層數
         i[1].requires_grad = False # False凍結, True解凍
         
-for i in model_transfer.features.named_parameters():
-    print(i[0],i[1].requires_grad)
+# for i in model_transfer.features.named_parameters():
+#     print(i[0],i[1].requires_grad)
 #%%
 avgpool = nn.AdaptiveAvgPool2d(output_size=(1,1))
 
@@ -93,7 +95,7 @@ use_cuda = torch.cuda.is_available()
 
 if use_cuda:
     model_transfer = model_transfer.cuda()
-print(model_transfer)
+# print(model_transfer)
 
 #%%
 # Loss and optimizer
@@ -137,7 +139,7 @@ class EarlyStopping:
         '''
         if self.verbose:
             print(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...') # 當模型驗證損失有下降就儲存該組權重
-        torch.save(model, './Module4_Fall_Down_Detection/cnn_weights/vgg_finish_model.pkl') # 保存最優模型(附檔名為pkl)
+        torch.save(model, save_dir_weights) # 保存最優模型(附檔名為pkl)
         self.val_loss_min = val_loss
 
 #%%
@@ -241,7 +243,7 @@ plt.grid(True)
 plt.legend()
 plt.tight_layout()
 plt.show()
-fig.savefig('./Module4_Fall_Down_Detection/cnn_training_plot/vgg_loss_plot.png', bbox_inches='tight')
+fig.savefig(save_dir_plot + '/vgg_loss_plot.png', bbox_inches='tight')
 
 #%%
 # initialize lists to monitor test loss and accuracy
@@ -303,4 +305,4 @@ for idx in np.arange(20):
     ax.imshow(np.squeeze(im), cmap='gray')
     ax.set_title("{} ({})".format(str(preds[idx].item()), str(labels[idx].item())),
                   color=("green" if preds[idx]==labels[idx] else "red"))
-fig.savefig('./Module4_Fall_Down_Detection/cnn_training_plot/vgg_result_plot.png', bbox_inches='tight')
+fig.savefig(save_dir_plot + '/vgg_result_plot.png', bbox_inches='tight')
